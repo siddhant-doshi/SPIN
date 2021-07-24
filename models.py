@@ -2,6 +2,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from dgl.nn.pytorch import SAGEConv
+from dgl.nn.pytorch import GINConv
 
 L_Relu = nn.LeakyReLU()                                                                                                                                     
 sig = nn.Sigmoid()
@@ -71,5 +73,59 @@ class SPIN(nn.Module): #aggregation choices = ["concat","sum"]
       else: em = S.sum(dim=1).reshape(1,-1)
     
       cl = self.classify(em)
+      C[i] = cl
+    return C
+
+ class GraphSage(nn.Module):
+  def __init__(self,d,r,num_classes):
+    super(GraphSage, self).__init__()
+    self.d = d
+    self.r = r
+    self.num_classes = num_classes
+
+    self.layers = [SAGEConv(d,d,'mean') for _ in range(self.r)]
+
+    self.classify = nn.Sequential(nn.Linear(d,d),nn.LeakyReLU(),nn.Linear(d,num_classes))
+    
+  def forward(self,X_list,graph_list):
+    C = torch.empty((len(X_list),self.num_classes))
+    for i in range(len(X_list)):
+      Y = X_list[i]
+      for j in range(self.r):
+        Y = L_Relu(self.layers[j](graph_list[i],Y))
+
+      em = Y.sum(dim=0).reshape(1,-1)
+      cl = self.classify(em)
+      
+      C[i] = cl
+    return C
+
+class GIN(nn.Module):
+  def __init__(self,d,r,num_classes):
+    super(GIN, self).__init__()
+    self.d = d
+    self.r = r
+    self.num_classes = num_classes
+    self.MLP_layers = [nn.Sequential(nn.Linear(self.d,self.d),nn.LeakyReLU(),nn.Linear(self.d,self.d),nn.LeakyReLU()) for _ in range(r)]
+
+    self.GIN_layers = [GINConv(self.MLP_layers[i],'sum',init_eps=0.1) for i in range(r)]
+
+    self.classify = nn.Sequential(nn.Linear(r*d,d),nn.LeakyReLU(),nn.Linear(d,num_classes))
+    
+  def forward(self,X_list,graph_list):
+    C = torch.empty((len(X_list),self.num_classes))
+    for i in range(len(X_list)):
+      Y = []
+      y = X_list[i]
+      sum = torch.empty((self.d,self.r))
+      for j in range(self.r):
+        y = L_Relu(self.GIN_layers[j](graph_list[i],y))
+        Y.append(y)
+        sum[:,j] = y.sum(dim=0)
+
+      em = sum.reshape(1,-1)
+
+      cl = self.classify(em)
+      
       C[i] = cl
     return C
