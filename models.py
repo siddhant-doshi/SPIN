@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -17,13 +16,13 @@ class SPIN(nn.Module): #aggregation choices = ["concat","sum"]
     self.d_ = d_
     self.num_classes = num_classes
     self.agg = agg
-    self.conv_layers = []
-    self.att_layers = []
+    self.conv_layers = nn.ModuleList()
+    self.att_layers = nn.ModuleList()
     self.branches = r+1
     self.attention = attention
     for i in range(self.branches):
       #l = nn.Sequential(nn.Linear(self.d,dim1),nn.Dropout(p=dropout_p),nn.LeakyReLU(),nn.Linear(dim1,dim1),nn.Dropout(p=dropout_p),nn.LeakyReLU(),nn.Linear(dim1,dim1),nn.Dropout(p=dropout_p),nn.LeakyReLU(),nn.Linear(dim1,self.d_),nn.LeakyReLU())
-      l = nn.Sequential(nn.Linear(self.d,dim1),nn.LeakyReLU(),nn.Linear(dim1,dim1),nn.LeakyReLU(),nn.Linear(dim1,dim1),nn.LeakyReLU(),nn.Linear(dim1,self.d_),nn.LeakyReLU())
+      l = nn.Sequential(nn.Linear(self.d,dim1),nn.LeakyReLU(),nn.Linear(dim1,dim1),nn.LeakyReLU(),nn.Linear(dim1,self.d_),nn.LeakyReLU())
       self.conv_layers.append(l)
     if (attention):
       for i in range(self.branches):
@@ -46,7 +45,7 @@ class SPIN(nn.Module): #aggregation choices = ["concat","sum"]
   def get_attention_scores(self,Y):
     w = torch.empty((len(Y[0]),self.branches))
     for i in range(self.branches):
-      w[:,i] = F.softmax(self.att_layers[i](Y[i]),dim=0).squeeze()
+      w[:,i] = F.softmax(Relu(self.att_layers[i](Y[i])),dim=0).squeeze()
     self.weights = w
     return self.weights
 
@@ -56,7 +55,8 @@ class SPIN(nn.Module): #aggregation choices = ["concat","sum"]
       S[:,i] = Y[i].sum(dim=0).squeeze()
     return S
 
-  def forward(self,l): #l = [X_list,AX_list,A2X_list,A3X_list]
+  def forward(self,l): #l = [X_list,AX_list,A2X_list,...,label_batches,graph_batches]
+    l = l[:-2] #dont need the labels and the actual graphs here
     C = torch.empty((len(l[0]),self.num_classes))
     for i in range(len(l[0])):
       Y = [] #Y = [Y0,Y1,...]
@@ -76,18 +76,22 @@ class SPIN(nn.Module): #aggregation choices = ["concat","sum"]
       C[i] = cl
     return C
 
- class GraphSage(nn.Module):
-  def __init__(self,d,r,num_classes):
+class GraphSage(nn.Module):
+  def __init__(self,d,dim1,r,num_classes):
     super(GraphSage, self).__init__()
     self.d = d
     self.r = r
+    self.dim1 = dim1
     self.num_classes = num_classes
+    self.layers = [SAGEConv(d,self.dim1,'mean')]
+    self.layers += [SAGEConv(self.dim1,self.dim1,'mean') for _ in range(r-1)]
+    self.layers = nn.ModuleList(self.layers)
 
-    self.layers = [SAGEConv(d,d,'mean') for _ in range(self.r)]
-
-    self.classify = nn.Sequential(nn.Linear(d,d),nn.LeakyReLU(),nn.Linear(d,num_classes))
+    self.classify = nn.Sequential(nn.Linear(self.dim1,self.dim1),nn.LeakyReLU(),nn.Linear(self.dim1,num_classes))
     
-  def forward(self,X_list,graph_list):
+  def forward(self,l): #l = [X_list,AX_list,A2X_list,...,label_batches,graph_batches]
+    X_list = l[0]
+    graph_list = l[-1]
     C = torch.empty((len(X_list),self.num_classes))
     for i in range(len(X_list)):
       Y = X_list[i]
@@ -101,30 +105,31 @@ class SPIN(nn.Module): #aggregation choices = ["concat","sum"]
     return C
 
 class GIN(nn.Module):
-  def __init__(self,d,r,num_classes):
+  def __init__(self,d,dim1,r,num_classes):
     super(GIN, self).__init__()
     self.d = d
     self.r = r
+    self.dim1 = dim1
     self.num_classes = num_classes
-    self.MLP_layers = [nn.Sequential(nn.Linear(self.d,self.d),nn.LeakyReLU(),nn.Linear(self.d,self.d),nn.LeakyReLU()) for _ in range(r)]
+    self.MLP_layers = [nn.Sequential(nn.Linear(self.d,self.dim1),nn.LeakyReLU(),nn.Linear(self.dim1,self.dim1),nn.LeakyReLU())]
+    self.MLP_layers += [nn.Sequential(nn.Linear(self.dim1,self.dim1),nn.LeakyReLU(),nn.Linear(self.dim1,self.dim1),nn.LeakyReLU()) for _ in range(r-1)]
+    self.MLP_layers = nn.ModuleList(self.MLP_layers)
 
     self.GIN_layers = [GINConv(self.MLP_layers[i],'sum',init_eps=0.1) for i in range(r)]
+    self.GIN_layers = nn.ModuleList(self.GIN_layers)
 
-    self.classify = nn.Sequential(nn.Linear(r*d,d),nn.LeakyReLU(),nn.Linear(d,num_classes))
+    self.classify = nn.Sequential(nn.Linear(self.dim1,self.dim1),nn.LeakyReLU(),nn.Linear(self.dim1,num_classes))
     
-  def forward(self,X_list,graph_list):
+  def forward(self,l): #l = [X_list,AX_list,A2X_list,...,label_batches,graph_batches]
+    X_list = l[0]
+    graph_list = l[-1]
     C = torch.empty((len(X_list),self.num_classes))
     for i in range(len(X_list)):
-      Y = []
-      y = X_list[i]
-      sum = torch.empty((self.d,self.r))
+      Y = X_list[i]
       for j in range(self.r):
-        y = L_Relu(self.GIN_layers[j](graph_list[i],y))
-        Y.append(y)
-        sum[:,j] = y.sum(dim=0)
+        Y = L_Relu(self.GIN_layers[j](graph_list[i],Y))
 
-      em = sum.reshape(1,-1)
-
+      em = Y.sum(dim=0).reshape(1,-1)
       cl = self.classify(em)
       
       C[i] = cl
