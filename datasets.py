@@ -72,24 +72,28 @@ Reddit_M = {
     "input_feat_dim":1,
     "num_classes":5
 }
+
 ogbg_molhiv = {
     "name":"ogbg-molhiv",
     "category":"ogb",
     "input_feat_dim":9,
     "num_classes":2
 }
+
 KKI = {
     "name":"KKI",
     "category":"brain",
     "input_feat_dim":1,
     "num_classes":2
 }
+
 OHSU = {
     "name":"OHSU",
     "category":"brain",
     "input_feat_dim":1,
     "num_classes":2
 }
+
 Peking_1 = {
     "name":"Peking_1",
     "category":"brain",
@@ -215,7 +219,7 @@ class dataset_split_class():
 def batch(graphs_list,labels,batch_size,category,num_classes,r,input_feat_dim,stratification_ratios = [],save_batches = False,path = ''):
   num_batches = len(graphs_list)//batch_size
   X_batches, label_batches, graph_batches = [],[],[]
-  all_batches = [[] for _ in range(r+3)]
+  all_batches = [[] for _ in range(r+4)]
   indices_dict = defaultdict()
   #len of stratification_ratios will give me the num_classes
   for i in range(num_classes):
@@ -233,6 +237,7 @@ def batch(graphs_list,labels,batch_size,category,num_classes,r,input_feat_dim,st
         indices+= random.sample(indices_dict[j],sample_size[j])
     graph_batches.append([graphs_list[index] for index in indices])
     X_batches.append([get_embed_X(graphs_list[index],category,input_feat_dim) for index in indices])
+    Z = add_node_features(X_batches[i],category)
     c = get_precomputions([graphs_list[index] for index in indices],X_batches[i],r,category)
     f = [torch.Tensor(t) for t in X_batches[i]] if (category == "social" or category == 'brain') else [get_sparse_tensor_from_scipy_coo(t) for t in X_batches[i]]
     all_batches[0].append(f)
@@ -241,8 +246,17 @@ def batch(graphs_list,labels,batch_size,category,num_classes,r,input_feat_dim,st
     label_batches.append(torch.tensor([labels[index] for index in indices]))
     all_batches[r+1].append(label_batches[i])
     all_batches[r+2].append(graph_batches[i])
+    all_batches[r+3].append(torch.Tensor(Z))
   if (save_batches): save_variable(all_batches,path)
   return all_batches
+
+def add_node_features(X_list,category):
+  if (category == 'social' or category == 'brain'):
+    z = np.array([sum(x) for x in X_list])
+    return z.reshape(-1,1)
+  else:
+    z = np.array([np.sum(x.toarray(),axis=0) for x in X_list])
+    return z
 
 def get_precomputions(graphs,X,r,category):
   all_list = [[] for _ in range(r)] #it should be like a list [AX_list,A2X_list,A3X_list,A4X_list]
