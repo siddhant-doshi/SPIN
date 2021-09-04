@@ -6,6 +6,8 @@ import random
 import numpy as np
 from scipy.sparse import coo_matrix
 import torch
+from ogb.graphproppred import DglGraphPropPredDataset, collate_dgl
+from torch.utils.data import DataLoader
 
 def get_sparse_tensor_from_scipy_coo(coo):
   values = coo.data
@@ -70,6 +72,13 @@ Reddit_M = {
     "num_classes":5
 }
 
+ogbg_molhiv = {
+    "name":"ogbg-molhiv",
+    "category":"ogb",
+    "input_feat_dim":9,
+    "num_classes":2
+}
+
 dataset_dict = {
     "ENZYMES":Enzymes,
     "DD":DD,
@@ -79,7 +88,8 @@ dataset_dict = {
     "IMDB-MULTI":IMDB_M,
     "COLLAB":Collab,
     "REDDIT-BINARY":Reddit_B,
-    "REDDIT-MULTI-5K":Reddit_M
+    "REDDIT-MULTI-5K":Reddit_M,
+    "ogbg-molhiv":ogbg_molhiv
 }
 
 class dataset():
@@ -88,21 +98,28 @@ class dataset():
     self.name = name
     self.category = category
     self.num_classes = num_classes
-    data = dgl.data.TUDataset(self.name)
-    self.labels = [lab.item() for lab in data.graph_labels]
-    self.graphs =  data.graph_lists
-    if (category == "social"):
-      #self.input_feat_dim = self.highest_degree()
-      self.input_feat_dim = 1
+    if (self.category == 'ogb'):
+      self.data = DglGraphPropPredDataset(name = name)
+      self.graphs = [x[0] for x in self.data]
+      self.labels = [x[1].item() for x in self.data]
+      self.input_feat_dim = 9
+      self.stratification_ratios = [0.7,0.3] #hardcoded this one
     else:
-      self.input_feat_dim = 21 if (name=="ENZYMES") else self.num_atoms()+1
+      data = dgl.data.TUDataset(self.name)
+      self.labels = [lab.item() for lab in data.graph_labels]
+      self.graphs =  data.graph_lists
+      if (category == "social"):
+        #self.input_feat_dim = self.highest_degree()
+        self.input_feat_dim = 1
+      else:
+        self.input_feat_dim = 21 if (name=="ENZYMES") else self.num_atoms()+1
+      self.stratification_ratios = list(self.get_stratification_ratios(self.labels).values())
     
     self.load_splits = load_splits
     if (load_splits):
       self.graph_sets, self.label_sets = self.load_splits_from_json(predefined_splits_filepath)
     else:
       self.graph_sets, self.label_sets = create_10_fold_splits(self.graphs,self.labels,random_seed=17)
-    self.stratification_ratios = list(self.get_stratification_ratios(self.labels).values())
 
   def get_stratification_ratios(self,lst):
     x = OrderedDict(Counter(lst))
@@ -134,7 +151,18 @@ def split_data(datasetObj,fold_index_k=0,val_split = 0.1,validation_split_seed=1
 
 class dataset_split_class():
   def __init__(self,datasetObj,fold_index_k=0,val_split = 0.1,validation_split_seed=17):
-    if (datasetObj.load_splits):
+    if (datasetObj.category == 'ogb'):
+      split_idx = datasetObj.data.get_idx_split()
+      train_loader = DataLoader(datasetObj.data[split_idx["train"]], batch_size=32, shuffle=True, collate_fn=collate_dgl)
+      valid_loader = DataLoader(datasetObj.data[split_idx["valid"]], batch_size=32, shuffle=False, collate_fn=collate_dgl)
+      test_loader = DataLoader(datasetObj.data[split_idx["test"]], batch_size=32, shuffle=False, collate_fn=collate_dgl)
+      self.graphs_train = [x[0] for x in train_loader.dataset]
+      self.lab_train = [x[1].item() for x in train_loader.dataset]
+      self.graphs_val = [x[0] for x in valid_loader.dataset]
+      self.lab_val = [x[1].item() for x in valid_loader.dataset]
+      self.graphs_test = [x[0] for x in test_loader.dataset]
+      self.lab_test = [x[1].item() for x in test_loader.dataset]
+    elif (datasetObj.load_splits):
       train_indices = datasetObj.content[fold_index_k]['model_selection'][0]['train']
       val_indices = datasetObj.content[fold_index_k]['model_selection'][0]['validation']
       test_indices = datasetObj.content[fold_index_k]['test']
@@ -230,11 +258,13 @@ def get_adjacency(graph): #input = DGL hetero graph
   for i in range(len(degrees)):
     D[i,i] = (1/degrees[i])**0.5 if (degrees[i]!=0) else 0
   A_tilde = np.matmul(np.matmul(D,A),D)
+  #A_tilde += A #use this to avoid some rare occuring cases where A_tilde would fail
   return A_tilde
   
 def get_embed_X(graph,category,input_feat_dim):
-  if (category == 'social'): #for social dataset, endcoding the degree info
-    degrees = graph.in_degrees()//2
+  if (category == 'ogb'): X = np.array(graph.ndata['feat'])
+  elif (category == 'social' or category == 'brain'): #for social and brain dataset, endcoding the degree info
+    degrees = graph.in_degrees()
     X = np.array(degrees).reshape(graph.num_nodes(),1)
   else: #for bioinformatics dataset, encoding the atom type
     X = np.zeros((graph.num_nodes(),input_feat_dim))
