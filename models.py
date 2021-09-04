@@ -56,7 +56,7 @@ class SPIN(nn.Module): #aggregation choices = ["concat","sum"]
     return S
 
   def forward(self,l): #l = [X_list,AX_list,A2X_list,...,label_batches,graph_batches]
-    l = l[:-2] #dont need the labels and the actual graphs here
+    l = l[:-3] #dont need the labels and the actual graphs and last added summation nodes
     C = torch.empty((len(l[0]),self.num_classes))
     for i in range(len(l[0])):
       Y = [] #Y = [Y0,Y1,...]
@@ -89,9 +89,9 @@ class GraphSage(nn.Module):
 
     self.classify = nn.Sequential(nn.Linear(self.dim1,self.dim1),nn.LeakyReLU(),nn.Linear(self.dim1,num_classes))
     
-  def forward(self,l): #l = [X_list,AX_list,A2X_list,...,label_batches,graph_batches]
+  def forward(self,l): #l = [X_list,AX_list,A2X_list,...,label_batches,graph_batches,_]
     X_list = l[0]
-    graph_list = l[-1]
+    graph_list = l[-2]
     C = torch.empty((len(X_list),self.num_classes))
     for i in range(len(X_list)):
       Y = X_list[i]
@@ -120,9 +120,9 @@ class GIN(nn.Module):
 
     self.classify = nn.Sequential(nn.Linear(self.dim1,self.dim1),nn.LeakyReLU(),nn.Linear(self.dim1,num_classes))
     
-  def forward(self,l): #l = [X_list,AX_list,A2X_list,...,label_batches,graph_batches]
+  def forward(self,l): #l = [X_list,AX_list,A2X_list,...,label_batches,graph_batches,_]
     X_list = l[0]
-    graph_list = l[-1]
+    graph_list = l[-2]
     C = torch.empty((len(X_list),self.num_classes))
     for i in range(len(X_list)):
       Y = X_list[i]
@@ -134,3 +134,24 @@ class GIN(nn.Module):
       
       C[i] = cl
     return C
+
+class MLP_classifier(nn.Module):
+  def __init__(self,d,num_layers,dim1,num_classes):
+    super(MLP_classifier, self).__init__()
+    self.d = d
+    self.dim1 = dim1
+    self.num_classes = num_classes
+    self.MLP_layers = [nn.Sequential(nn.Linear(self.d,self.dim1),nn.LeakyReLU())]
+    self.MLP_layers += [nn.Sequential(nn.Linear(self.dim1,self.dim1),nn.LeakyReLU()) for _ in range(num_layers)] 
+    self.MLP_layers = nn.ModuleList(self.MLP_layers)
+
+    self.classify = nn.Sequential(nn.Linear(self.dim1,self.dim1),nn.LeakyReLU(),nn.Linear(self.dim1,num_classes))
+    
+  def forward(self,l): #l = [X_list,AX_list,A2X_list,...,label_batches,graph_batches,_]
+    X = l[-1]
+    for layer in self.MLP_layers:
+      X = layer(X)
+
+    cl = self.classify(X)
+      
+    return cl
