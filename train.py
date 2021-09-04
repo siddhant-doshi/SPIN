@@ -33,22 +33,22 @@ def train_model(dataFold,net,patience_factor,num_epochs,loss = "Cross_entropy",o
       net.train()
       for i in range(dataFold.num_batches):
         logits = net([dataFold.train_batches[j][i] for j in range(len(dataFold.train_batches))])
-        loss = CE_loss(logits,dataFold.train_batches[-2][i])
+        loss = CE_loss(logits,dataFold.train_batches[-3][i])
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        b_acc = evaluate(logits,dataFold.train_batches[-2][i],metric=metric)
+        b_acc = evaluate(logits,dataFold.train_batches[-3][i],metric=metric)
         print ("epoch = %d | batch = %d | loss = %f | batch_accuracy = %f "%(epoch_num,i,loss.item(),b_acc))
         l+=loss.item()
         t_acc+=b_acc
       
       net.eval()
       logits_val = net([dataFold.val_batches[j][0] for j in range(len(dataFold.val_batches))])
-      val_loss = CE_loss(logits_val,dataFold.val_batches[-2][0])
-      acc_val = evaluate(logits_val,dataFold.val_batches[-2][0],metric=metric)
+      val_loss = CE_loss(logits_val,dataFold.val_batches[-3][0])
+      acc_val = evaluate(logits_val,dataFold.val_batches[-3][0],metric=metric)
 
       logits_test = net([dataFold.test_batches[j][0] for j in range(len(dataFold.test_batches))])
-      acc_test = evaluate(logits_test,dataFold.test_batches[-2][0],metric=metric)
+      acc_test = evaluate(logits_test,dataFold.test_batches[-3][0],metric=metric)
 
       avg_epochwise_loss.append(l/dataFold.num_batches)
       epochwise_val_loss.append(val_loss)
@@ -71,4 +71,5 @@ def train_model(dataFold,net,patience_factor,num_epochs,loss = "Cross_entropy",o
     if (p >= patience_factor) : print ("Patience factor termination")
     return best_model,training_specs
   except KeyboardInterrupt:
+    print ("KeyboardInterrupt. Need to stop the training. Obeying the orders!")
     return best_model,training_specs
