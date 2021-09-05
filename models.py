@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from dgl.nn.pytorch import SAGEConv
 from dgl.nn.pytorch import GINConv
+from torch_geometric.nn import global_sort_pool
 
 L_Relu = nn.LeakyReLU()                                                                                                                                     
 sig = nn.Sigmoid()
@@ -155,3 +156,37 @@ class MLP_classifier(nn.Module):
     cl = self.classify(X)
       
     return cl
+
+class DGCNN(nn.Module):
+  def __init__(self,d,dim1,r,num_classes,k):
+    super(DGCNN, self).__init__()
+    self.d = d
+    self.r = r
+    self.dim1 = dim1
+    self.num_classes = num_classes
+    layers = [SAGEConv(d,self.dim1,'mean')]
+    layers += [SAGEConv(self.dim1,self.dim1,'mean') for _ in range(r-1)]
+    self.conv_layers = nn.ModuleList(layers)
+    self.k = k #tune this manually - will be dataset specific
+    self.conv1d = torch.nn.Conv1d(1, 8, 5) #hardcoded
+    #kd-4
+    self.classify = nn.Sequential(nn.Linear(8*(self.k*self.dim1 - 4),self.dim1),nn.LeakyReLU(),nn.Linear(self.dim1,num_classes))
+    
+  def forward(self,l): #l = [X_list,AX_list,A2X_list,...,label_batches,graph_batches,_]
+    X_list = l[0]
+    graph_list = l[-2]
+    C = torch.empty((len(X_list),self.num_classes))
+    for i in range(len(X_list)): #iterating over graphs in a batch
+      Y = X_list[i]
+      for j in range(self.r): #pass through the convolutional layers
+        Y = L_Relu(self.conv_layers[j](graph_list[i],Y))
+      #Y is Nxdim1 matrix
+      sort_pooled = global_sort_pool(Y,torch.tensor([0 for _ in range(len(Y))]).type(torch.LongTensor),self.k)
+      #sort_pooled will be 1x(k.dim1) vector
+      c = self.conv1d(torch.unsqueeze(sort_pooled, dim=1))
+
+      em = c.reshape(1,-1)
+      cl = self.classify(em)
+      
+      C[i] = cl
+    return C
