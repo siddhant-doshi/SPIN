@@ -1,5 +1,8 @@
-pip install dgl #-cu101
-
+!pip install dgl #-cu101
+!pip install ogb
+!pip install torch-scatter
+!pip install torch-sparse
+!pip install torch-geometric
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -8,8 +11,9 @@ from datasets import *
 from models import *
 from train import *
 
-#choices_set1 = ["ENZYMES","NCI1","PROTEINS_full","DD"]
-#set2 = ["IMDB-BINARY","IMDB-MULTI","COLLAB","REDDIT-BINARY","REDDIT-MULTI-5K"]
+#choices_set1|chemical| = ["ENZYMES","NCI1","PROTEINS_full","DD","ogbg-molhiv"]
+#set2|social| = ["IMDB-BINARY","IMDB-MULTI","COLLAB","REDDIT-BINARY","REDDIT-MULTI-5K"]
+#set3|brain| = ["KKI","OHSU","Peking_1"]
 #copy the exact dataset name
 datasetName = "IMDB-MULTI"
 
@@ -26,23 +30,35 @@ datasetObj = load_dataset(datasetName,load_datasplits = loadDataSplits,predefine
 #if predefined splits are use (e.g., from the link we gave above), they will be automatically considered
 foldIndex = 1
 dataFold = split_data(datasetObj,foldIndex,val_split = 0.1,validation_split_seed=19) #object containing the train, validation and test graphs with corresponding labels
-#dataObj.split_data(fold_index_k=foldIndex,val_split = 0.1,validation_split_seed=19)
+print ("Experimenting structure: Num(Train_graphs) == %d | Num(Validation_graphs) == %d | Num(Testing_graphs) == %d"%(len(dataFold.graphs_train),len(dataFold.graphs_val),len(dataFold.graphs_test)))
 
 rHop = 2 #hyperpara
 batchSize = 32
 dataFold.create_batches(datasetObj,r_hop = rHop,batch_size = batchSize,save_batches = False,path = '')
+print ("Num training batches == %d"%(len(dataFold.train_batches[0])))
 #dataFold.train_batches = [X_batches, AX_batches, ... , ArX_batches, label_batches, graph_batches]
 #dataFold.train_batches[i][j][k] : i corresponds to X_batches (or AX_batches and so), j: batch num, k: Data index in the jth batch
 
 intermediate_dim = 32
 d_hat = 16
 net = SPIN(datasetObj.input_feat_dim,d_hat,datasetObj.num_classes,rHop,intermediate_dim,agg='concat',attention=False)
+#net = GIN(datasetObj.input_feat_dim,intermediate_dim, rHop,datasetObj.num_classes) #or GraphSage
+#net = MLP_classifier(datasetObj.input_feat_dim,rHop,intermediate_dim,datasetObj.num_classes) #rHop can be used as num_layers
+#net = DGCNN(datasetObj.input_feat_dim,intermediate_dim,rHop,datasetObj.num_classes,2)
 
-#train model
-num_epochs = 500
-patience_factor = 300 #if the validation does not achieve a new peak in <patience_factor> epochs, we stop.
-results,train_specs = train_model(dataFold,net,patience_factor,num_epochs,loss = "Cross_entropy",optimizer = "Adam",learning_rate = 5e-3)
+hyperpara_dict = {
+    'num_epochs': 100,
+    'patience_factor': 100,
+    'learning_rate': 1e-4,
+    'loss_func': "Cross_entropy",
+    'optimizer': "Adam",
+    'metric': "accuracy" 
+}
 
+results,train_specs = train_model(dataFold, net, hyperpara_dict['patience_factor'], \
+                                  hyperpara_dict['num_epochs'], loss = hyperpara_dict['loss_func'], \
+                                  optimizer = hyperpara_dict['optimizer'], learning_rate = hyperpara_dict['learning_rate'], \
+                                  metric = hyperpara_dict['metric'])
 print (results,end='\n',sep='\n')
 
 sns.set_theme()
