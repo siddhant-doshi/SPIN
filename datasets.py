@@ -239,7 +239,8 @@ def batch(graphs_list,labels,batch_size,category,num_classes,r,input_feat_dim,st
     X_batches.append([get_embed_X(graphs_list[index],category,input_feat_dim) for index in indices])
     Z = add_node_features(X_batches[i],category)
     c = get_precomputions([graphs_list[index] for index in indices],X_batches[i],r,category)
-    f = [torch.Tensor(t) for t in X_batches[i]] if (category == "social" or category == 'brain') else [get_sparse_tensor_from_scipy_coo(t) for t in X_batches[i]]
+    #f = [torch.Tensor(t) for t in X_batches[i]] if (category == "social" or category == 'brain') else [get_sparse_tensor_from_scipy_coo(t) for t in X_batches[i]]
+    f = [torch.Tensor(t) for t in X_batches[i]]
     all_batches[0].append(f)
     for j in range(1,r+1):
       all_batches[j].append(c[j-1])
@@ -251,38 +252,21 @@ def batch(graphs_list,labels,batch_size,category,num_classes,r,input_feat_dim,st
   return all_batches
 
 def add_node_features(X_list,category):
-  if (category == 'social' or category == 'brain'):
-    z = np.array([sum(x) for x in X_list])
-    return z.reshape(-1,1)
-  else:
-    z = np.array([np.sum(x.toarray(),axis=0) for x in X_list])
-    return z
+  z = np.array([sum(x) for x in X_list])
+  return z.reshape(-1,1)
 
 def get_precomputions(graphs,X,r,category):
   all_list = [[] for _ in range(r)] #it should be like a list [AX_list,A2X_list,A3X_list,A4X_list]
-  if (category == 'social' or category == 'brain'):
-    for i in range(len(X)):
-      A = get_adjacency(graphs[i]) #this is the normalized adjacency
-      c = []
-      x = X[i]
-      for _ in range(r):
-        x = A@x
-        c.append(x) #c is like [ax,a2x,a3x]
-      c = [torch.Tensor(t) for t in c]
-      for j in range(r):
-        all_list[j].append(c[j])
-  else:
-    for i in range(len(X)):
-      A = get_adjacency(graphs[i]) #this is the normalized adjacency
-      c = []
-      x = X[i]
-      for _ in range(r):
-        x = coo_matrix(A*x)
-        c.append(x) #c is like [ax,a2x,a3x]
-      c = [get_sparse_tensor_from_scipy_coo(t) for t in c]
-      get_sparse_tensor_from_scipy_coo
-      for j in range(r):
-        all_list[j].append(c[j])
+  for i in range(len(X)):
+    A = get_adjacency(graphs[i]) #this is the normalized adjacency
+    c = []
+    x = X[i]
+    for _ in range(r):
+      x = A@x
+      c.append(x) #c is like [ax,a2x,a3x]
+    c = [torch.Tensor(t) for t in c]
+    for j in range(r):
+      all_list[j].append(c[j])
   return all_list 
 
 def get_adjacency(graph): #input = DGL hetero graph
@@ -299,7 +283,6 @@ def get_adjacency(graph): #input = DGL hetero graph
 def get_embed_X(graph,category,input_feat_dim):
   if (category == 'ogb'): 
     X = np.array(graph.ndata['feat'])
-    X = coo_matrix(X)
   elif (category == 'social' or category == 'brain'): #for social and brain dataset, endcoding the degree info
     degrees = graph.in_degrees()
     X = np.array(degrees).reshape(graph.num_nodes(),1)
@@ -311,7 +294,6 @@ def get_embed_X(graph,category,input_feat_dim):
     if (input_feat_dim == 21): #special case for ENZYMES
       X1 = np.array(graph.ndata["node_attr"]) #nx18 matrix
       X = np.concatenate((X1,X[:,:3]),axis=1) #converting it to nx21
-    X = coo_matrix(X)
   return X
 
 def create_10_fold_splits(graphs,labels,random_seed=17):
