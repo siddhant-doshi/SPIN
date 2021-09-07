@@ -48,16 +48,17 @@ net = SPIN(datasetObj.input_feat_dim,d_hat,datasetObj.num_classes,rHop,intermedi
 
 hyperpara_dict = {
     'num_epochs': 100,
-    'patience_factor': 100,
+    'patience_factor': 75,
     'learning_rate': 1e-4,
     'loss_func': "Cross_entropy",
     'optimizer': "Adam",
-    'metric': "accuracy" 
+    'L2': 1e-3,
+    'metric': "auroc" #as of now either 'accuracy' or 'auroc' 
 }
-
 results,train_specs = train_model(dataFold, net, hyperpara_dict['patience_factor'], \
                                   hyperpara_dict['num_epochs'], loss = hyperpara_dict['loss_func'], \
-                                  optimizer = hyperpara_dict['optimizer'], learning_rate = hyperpara_dict['learning_rate'], \
+                                  optimizer = hyperpara_dict['optimizer'], L2 = hyperpara_dict['L2'], \
+                                  learning_rate = hyperpara_dict['learning_rate'], \
                                   metric = hyperpara_dict['metric'])
 print (results,end='\n',sep='\n')
 
