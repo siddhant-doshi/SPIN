@@ -253,7 +253,7 @@ def batch(graphs_list,labels,batch_size,category,num_classes,r,input_feat_dim,st
 
 def add_node_features(X_list,category):
   z = np.array([sum(x) for x in X_list])
-  return z.reshape(-1,1)
+  return z
 
 def get_precomputions(graphs,X,r,category):
   all_list = [[] for _ in range(r)] #it should be like a list [AX_list,A2X_list,A3X_list,A4X_list]
