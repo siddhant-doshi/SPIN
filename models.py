@@ -191,3 +191,85 @@ class DGCNN(nn.Module):
       
       C[i] = cl
     return C
+
+class ECC(nn.Module):
+  def __init__(self,d,dim1,r,num_classes):
+    super(ECC, self).__init__()
+    self.d = d
+    self.r = r
+    self.dim1 = dim1
+    self.num_classes = num_classes
+    e_fncs = [nn.Sequential(nn.Linear(1,self.d*self.dim1),nn.LeakyReLU())]
+    e_fncs += [nn.Sequential(nn.Linear(1,self.dim1*self.dim1),nn.LeakyReLU()) for _ in range(r-1)]
+    self.edge_functions = nn.ModuleList(e_fncs)
+
+    layers = [NNConv(self.d,self.dim1,self.edge_functions[0],'sum')]
+    layers += [NNConv(self.dim1,self.dim1,self.edge_functions[i],'sum') for i in range(1,r)]
+    self.conv_layers = nn.ModuleList(layers)
+
+    self.classify = nn.Sequential(nn.Linear(self.dim1,self.dim1),nn.LeakyReLU(),nn.Linear(self.dim1,num_classes))
+
+  def forward(self,l): #l = [X_list,AX_list,A2X_list,...,label_batches,graph_batches,_]
+    X_list = l[0]
+    graph_list = l[-2]
+    C = torch.empty((len(X_list),self.num_classes))
+    for i in range(len(X_list)): #iterating over graphs in a batch
+      Y = X_list[i]
+      for j in range(self.r): #pass through the convolutional layers
+        Y = L_Relu(self.conv_layers[j](graph_list[i],Y,0.01*torch.ones(graph_list[i].num_edges(),1)))
+      
+      em = Y.sum(dim=0).reshape(1,-1)
+      cl = self.classify(em)
+    
+      C[i] = cl
+    return C
+ 
+class DiffPool_block(nn.Module):
+  def __init__(self,input_dim,output_dim,r,max_nodes,cluster_factor=0.5):
+    super(DiffPool_block, self).__init__()
+    #this will take in {A,X} to give {A',X'}
+    #each diffpool block has 2 GNNs
+    #GNN1 - gives Z, and GNN2 - gives S (cluster assignment)
+    self.inp_dim = input_dim #input dimension
+    self.r = r #number of convolutions in each layer
+    self.out_dim = output_dim
+    self.max_nodes = max_nodes
+    self.embedding_GNN = nn.ModuleList([nn.Linear(self.inp_dim,self.out_dim//2),nn.Linear(self.out_dim//2,self.out_dim)])
+    self.cluster_GNN = nn.ModuleList([nn.Linear(self.inp_dim,self.max_nodes//2),nn.Linear(self.max_nodes//2,self.max_nodes//2)])
+
+  def forward(self,A,X):
+    z = L_Relu(self.embedding_GNN[0](A@X))
+    z = L_Relu(self.embedding_GNN[1](A@z))
+    s = L_Relu(self.cluster_GNN[0](A@X))
+    s = sft_row(self.cluster_GNN[1](A@s))
+    X_ = torch.transpose(s,0,1)@z
+    A_ = torch.transpose(s,0,1)@A@s
+
+    return A_,X_
+ 
+class DiffPool(nn.Module):
+  def __init__(self,d,dim1,r,num_classes,max_nodes,cluster_factor=0.25):
+    super(DiffPool, self).__init__()
+    self.dim1 = dim1
+    self.r = r
+    self.num_classes = num_classes
+    self.block1 = DiffPool_block(d,dim1,r,max_nodes,cluster_factor=0.5)
+    self.block2 = DiffPool_block(dim1,dim1,r,max_nodes,cluster_factor=0.5)
+ 
+    self.classify = nn.Sequential(nn.Linear(self.dim1,self.dim1),nn.LeakyReLU(),nn.Linear(self.dim1,num_classes))
+ 
+  def forward(self,l):
+    X_list = l[0]
+    graph_list = l[-2]
+    C = torch.empty((len(X_list),self.num_classes))
+    for i in range(len(X_list)): #iterating over graphs in a batch
+      A = graph_list[i].adjacency_matrix().to_dense()
+      X = X_list[i]
+      A_,X_ = self.block1(A,X)
+      A_,X_ = self.block2(A_,X_)
+ 
+      em = X_.sum(dim=0).reshape(1,-1)
+      cl = self.classify(em)
+   
+      C[i] = cl
+    return C
