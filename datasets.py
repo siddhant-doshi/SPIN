@@ -142,7 +142,7 @@ class dataset():
       else:
         self.input_feat_dim = 21 if (name=="ENZYMES") else self.num_atoms()+1
       self.stratification_ratios = list(self.get_stratification_ratios(self.labels).values())
-    
+    self.max_nodes = max([g.num_nodes() for g in self.graphs])
     self.load_splits = load_splits
     if (load_splits):
       self.graph_sets, self.label_sets = self.load_splits_from_json(predefined_splits_filepath)
