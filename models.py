@@ -9,6 +9,7 @@ L_Relu = nn.LeakyReLU()
 sig = nn.Sigmoid()
 Relu = nn.ReLU()
 tanh = nn.Tanh()
+sft_row = nn.Softmax(dim=1)
 
 class SPIN(nn.Module): #aggregation choices = ["concat","sum"]
   def __init__(self,d,d_,num_classes,r,dim1,dropout_p=0.5,agg = 'concat',attention=True):
