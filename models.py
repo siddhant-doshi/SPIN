@@ -113,14 +113,14 @@ class GIN(nn.Module):
     self.r = r
     self.dim1 = dim1
     self.num_classes = num_classes
-    self.MLP_layers = [nn.Sequential(nn.Linear(self.d,self.dim1),nn.LeakyReLU(),nn.Linear(self.dim1,self.dim1),nn.LeakyReLU())]
-    self.MLP_layers += [nn.Sequential(nn.Linear(self.dim1,self.dim1),nn.LeakyReLU(),nn.Linear(self.dim1,self.dim1),nn.LeakyReLU()) for _ in range(r-1)]
+    self.MLP_layers = [nn.Sequential(nn.Linear(self.d,self.dim1),nn.Tanh(),nn.Linear(self.dim1,self.dim1),nn.Tanh())]
+    self.MLP_layers += [nn.Sequential(nn.Linear(self.dim1,self.dim1),nn.Tanh(),nn.Linear(self.dim1,self.dim1),nn.Tanh()) for _ in range(r-1)]
     self.MLP_layers = nn.ModuleList(self.MLP_layers)
 
     self.GIN_layers = [GINConv(self.MLP_layers[i],'sum',init_eps=0.1) for i in range(r)]
     self.GIN_layers = nn.ModuleList(self.GIN_layers)
 
-    self.classify = nn.Sequential(nn.Linear(self.dim1,self.dim1),nn.LeakyReLU(),nn.Linear(self.dim1,num_classes))
+    self.classify = nn.Sequential(nn.Linear(self.r*self.dim1,self.dim1),nn.Tanh(),nn.Linear(self.dim1,num_classes))
     
   def forward(self,l): #l = [X_list,AX_list,A2X_list,...,label_batches,graph_batches,_]
     X_list = l[0]
@@ -128,10 +128,13 @@ class GIN(nn.Module):
     C = torch.empty((len(X_list),self.num_classes))
     for i in range(len(X_list)):
       Y = X_list[i]
+      out = torch.empty(self.dim1,self.r)
       for j in range(self.r):
-        Y = L_Relu(self.GIN_layers[j](graph_list[i],Y))
+        Y = tanh(self.GIN_layers[j](graph_list[i],Y))
+        out[:,j] = Y.sum(dim=0)
 
-      em = Y.sum(dim=0).reshape(1,-1)
+      #em = Y.sum(dim=0).reshape(1,-1)
+      em = out.reshape(1,-1)
       cl = self.classify(em)
       
       C[i] = cl
