@@ -13,7 +13,7 @@ from train import *
 
 #choices_set1|chemical| = ["ENZYMES","NCI1","PROTEINS_full","DD","ogbg-molhiv"]
 #set2|social| = ["IMDB-BINARY","IMDB-MULTI","COLLAB","REDDIT-BINARY","REDDIT-MULTI-5K"]
-#set3|brain| = ["KKI","OHSU","Peking_1"]
+#set3|brain| = ["OHSU","Peking_1"]
 #copy the exact dataset name
 datasetName = "IMDB-MULTI"
 
