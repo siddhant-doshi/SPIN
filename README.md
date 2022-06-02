@@ -19,7 +19,7 @@ Here, we detail about the implementation of SPIN and the ways to reproduce the r
 1. We would need to initialize the datasetName from the options provided 
 #choices_set1|chemical| = ["ENZYMES","NCI1","PROTEINS_full","DD","ogbg-molhiv"]
 #set2|social| = ["IMDB-BINARY","IMDB-MULTI","COLLAB","REDDIT-BINARY","REDDIT-MULTI-5K"]
-#set3|brain| = ["KKI","OHSU","Peking_1"]. Advice to use the exact name string.
+#set3|brain| = ["OHSU","Peking_1"]. Advice to use the exact name string.
 2. If using pre-defined datasplits, set the flag loadDataSplits appropriately and give the path of the split .json file in the variable predefinedSplitsFilepath.
 3. Decide the foldIndex in [0,9] as we intend to perform a 10-fold cross validation.
 4. Select the rHop value and the batchSize to start the precomputations and generate all the necessary information.
