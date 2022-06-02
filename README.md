@@ -5,8 +5,6 @@ parallel, named SPIN, that pools node-level representations from each branch thr
 pools graph embeddings from multiple branches through a graph-level readout function. We present two variants of SPIN with and
 without an attention mechanism at the branch-level readouts to capture the most relevant node features at each branch. 
 
-The report of this complete work is available at https://arxiv.org/abs/2111.11482.
-
 Here, we detail about the implementation of SPIN and the ways to reproduce the results.
 
 ### Summary of the files: 
@@ -27,3 +25,5 @@ Here, we detail about the implementation of SPIN and the ways to reproduce the r
 4. Select the rHop value and the batchSize to start the precomputations and generate all the necessary information.
 5. Set the hyperparas in hyperpara_dict.
 6. Train the model.
+
+The preprint of this complete work is available at https://arxiv.org/abs/2111.11482.
